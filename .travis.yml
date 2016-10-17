@@ -1,0 +1,42 @@
+sudo: false
+language: php
+php:
+  - '7'
+branches:
+  only:
+    - master
+
+services:
+  - mysql
+
+cache:
+  directories:
+    - $HOME/.composer/cache
+
+install:
+  - phpenv config-add $TRAVIS_BUILD_DIR/app/config/travis.php.ini
+  - phpenv config-rm xdebug.ini
+  - composer self-update
+  - composer config -g github-oauth.github.com ${GITHUB_OAUTH};
+  - composer install --optimize-autoloader --no-interaction --working-dir=$TRAVIS_BUILD_DIR
+  - cp $TRAVIS_BUILD_DIR/app/config/parameters_test.yml.dist $TRAVIS_BUILD_DIR/app/config/parameters_test.yml
+  - mysql -u root -e "create database IF NOT EXISTS console"
+  - find $TRAVIS_BUILD_DIR//app/config -type f -name 'parameters*.yml' -exec sed -i "s/database_driver"\:".*/database_driver"\:" pdo_mysql/g; s/database_name"\:".*/database_name"\:" console/g; s/database_user"\:".*/database_user"\:" root/g; s/database_password"\:".*/database_password"\:" ~/g; s/mailer_transport"\:".*/mailer_transport"\:" null/g;" {} \;
+  - mysql -e "SET GLOBAL wait_timeout = 28800;"
+  - mysql -e "SET GLOBAL max_allowed_packet = 536870912;"
+  - php $TRAVIS_BUILD_DIR/app/console oro:install --env test --user-name=admin --user-email=admin@example.com --user-firstname=John --user-lastname=Doe --user-password=admin --sample-data=n --organization-name=OroCRM --no-interaction --timeout 0
+  - php $TRAVIS_BUILD_DIR/app/console doctrine:fixture:load --no-debug --append --no-interaction --env=test --fixtures vendor/oro/platform/src/Oro/Bundle/TestFrameworkBundle/Fixtures
+
+script:
+  - $TRAVIS_BUILD_DIR/vendor/phpunit/phpunit/phpunit --verbose --testsuite unit
+
+after_failure:
+    - cat app/logs/prod.log
+    - cat app/logs/test.log
+
+notifications:
+  email:
+    recipients:
+      - vladimir@drizheruk.com.ua
+    on_success: changes
+    on_failure: always
